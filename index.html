@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>TJ's List</title>
+  <meta name="description" content="Shared Trader Joe's grocery checklist">
+  <meta name="theme-color" content="#b5121b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TJ's List">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="title-row">
+      <h1>TJ's List</h1>
+      <div class="actions">
+        <button id="sync" class="sync" type="button" aria-live="polite">
+          <span class="dot"></span><span class="label">Loading…</span>
+        </button>
+        <button id="account" class="account" type="button">Sign in</button>
+      </div>
+    </div>
+    <p id="viewonly" class="viewonly" hidden>
+      <span>View only.</span>
+      <button id="viewonly-signin" type="button">Sign in to edit</button>
+    </p>
+    <div class="search" id="search">
+      <input id="q" type="search" placeholder="Add an item…" autocomplete="off"
+             autocorrect="off" spellcheck="false" enterkeyhint="done"
+             role="combobox" aria-expanded="false" aria-controls="suggestions"
+             aria-autocomplete="list">
+      <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+    </div>
+  </header>
+
+  <main id="list" class="list" aria-label="Grocery list"></main>
+
+  <section id="done" class="done" hidden>
+    <div class="done-head">
+      <h2>In cart <span id="done-count"></span></h2>
+      <button id="clear" class="clear" type="button">Clear</button>
+    </div>
+    <ul id="done-items" class="items"></ul>
+  </section>
+
+  <dialog id="signin" class="sheet" aria-labelledby="signin-title">
+    <form id="signin-form" method="dialog">
+      <h2 id="signin-title">Sign in to edit</h2>
+      <p class="hint">Enter the list's editing password. This phone will remember it.</p>
+      <!-- Lets iPhone Passwords save and fill the password under a recognizable name. -->
+      <input type="text" name="username" autocomplete="username" value="TJ's List" hidden readonly>
+      <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Password" required>
+      <p class="error" id="signin-error" hidden></p>
+      <div class="sheet-buttons">
+        <button type="button" class="secondary" data-close>Cancel</button>
+        <button type="submit" class="primary">Sign in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

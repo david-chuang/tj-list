@@ -35,7 +35,7 @@ body {
   color: var(--text);
   font: 17px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
-  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  padding-bottom: 0;
 }
 
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
@@ -91,9 +91,11 @@ h1 { font-size: 26px; margin: 0 0 8px; letter-spacing: -0.02em; color: var(--acc
   max-height: 60vh; overflow-y: auto;
 }
 .suggestions li {
-  display: flex; flex-direction: column;
-  padding: 9px 10px; border-radius: 8px; cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-radius: 8px; cursor: pointer;
 }
+.suggestions .s-text { display: flex; flex-direction: column; min-width: 0; }
+.suggestions .thumb { width: 36px; height: 36px; border-radius: 6px; }
 .suggestions li[aria-selected="true"], .suggestions li:hover { background: var(--hover); }
 .suggestions .s-name { font-size: 16px; }
 .suggestions .s-cat { font-size: 12px; color: var(--muted); }
@@ -138,11 +140,54 @@ h1 { font-size: 26px; margin: 0 0 8px; letter-spacing: -0.02em; color: var(--acc
 .name { overflow-wrap: anywhere; }
 .item.checked .name { color: var(--muted); text-decoration: line-through; }
 
-.remove {
-  flex: none; width: 44px; height: 44px; margin-right: 4px;
-  color: var(--muted); font-size: 22px; line-height: 1; border-radius: 10px;
+.toggle { gap: 10px; padding-right: 2px; }
+.text { display: flex; flex-direction: column; min-width: 0; }
+.meta { font-size: 13px; color: var(--muted); margin-top: 1px; font-variant-numeric: tabular-nums; }
+
+/* Product photo; white tile because the photos have transparent backgrounds. */
+.thumb {
+  flex: none; width: 44px; height: 44px; border-radius: 8px;
+  background: #fff; border: 1px solid var(--line);
+  display: grid; place-items: center; overflow: hidden;
 }
-.remove:hover { background: var(--hover); color: var(--accent); }
+.thumb img { width: 100%; height: 100%; object-fit: contain; }
+.thumb.empty { background: var(--hover); border-color: transparent; }
+.item.checked .thumb { opacity: 0.5; }
+
+/* Quantity stepper; at 1 the minus becomes a trash can. */
+.qty { flex: none; display: flex; align-items: center; margin-right: 8px; }
+.qty button {
+  width: 32px; height: 36px; border-radius: 9px;
+  color: var(--muted); font-size: 20px; line-height: 1;
+  display: grid; place-items: center;
+}
+.qty button:hover { background: var(--hover); color: var(--text); }
+.qty button:disabled { opacity: 0.3; }
+.qty .count { min-width: 20px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.qty .dec.trash::before {
+  content: ""; width: 17px; height: 17px; background: currentColor;
+  -webkit-mask: var(--trash) center / contain no-repeat; mask: var(--trash) center / contain no-repeat;
+}
+.qty .dec.trash:hover { color: var(--accent); }
+:root {
+  --trash: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6'/%3E%3C/svg%3E");
+}
+.qty-badge { flex: none; margin-right: 14px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Running total */
+.totals {
+  position: sticky; bottom: 0; z-index: 5;
+  margin-top: 20px;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+.totals-row { display: flex; align-items: baseline; justify-content: space-between; }
+.totals-label { font-size: 15px; color: var(--muted); }
+.total { font-size: 22px; font-variant-numeric: tabular-nums; }
+.totals-detail { font-size: 14px; color: var(--muted); margin-top: 2px; }
+.totals-note { font-size: 12px; color: var(--muted); margin-top: 2px; opacity: 0.85; }
+.totals-note:empty { display: none; }
 
 .item.flash { animation: flash 0.9s ease; }
 @keyframes flash { 0%, 100% { background: transparent; } 30% { background: var(--hover); } }
@@ -176,11 +221,10 @@ h1 { font-size: 26px; margin: 0 0 8px; letter-spacing: -0.02em; color: var(--acc
 .viewonly button { color: var(--accent); font-weight: 600; padding: 0 0 0 4px; }
 
 body.view-only .search,
-body.view-only .remove,
 body.view-only .clear { display: none; }
 body.view-only .toggle { cursor: default; }
 body.view-only .toggle:hover { background: none; }
-body.view-only .item { padding-right: 8px; }
+
 
 .sheet {
   width: min(420px, calc(100vw - 32px));

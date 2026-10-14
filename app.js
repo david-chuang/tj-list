@@ -14,6 +14,11 @@
 
   const LS = { items: "tj.items.v1", pending: "tj.pending.v1", custom: "tj.custom.v1", password: "tj.editPassword.v1" };
   const MAX_SUGGESTIONS = 8;
+  const MAX_QTY = 99;
+  // Product photos load straight from Trader Joe's image server, using its small thumbnail rendition.
+  const IMG_BASE = "https://www.traderjoes.com/content/dam/trjo/products/";
+  const thumbUrl = (path) => `${IMG_BASE}${path}/jcr:content/renditions/cq5dam.thumbnail.140.100.png`;
+  const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -22,6 +27,7 @@
     account: $("account"), viewonly: $("viewonly"),
     viewonlySignin: $("viewonly-signin"), signin: $("signin"), signinForm: $("signin-form"),
     password: $("password"), signinError: $("signin-error"),
+    totals: $("totals"), total: $("total"), totalDetail: $("total-detail"), totalNote: $("total-note"),
   };
 
   // ---------- Local storage (wrapped: private mode can throw) ----------
@@ -49,6 +55,8 @@
   let custom = load(LS.custom, []); // [{ n, c }] items typed in that aren't in the catalog
   let pool = [];                     // searchable products: custom + catalog
   let catalog = [];
+  let productByName = new Map(); // lowercase name → { n, c, p (price), s (size), i (image path) }
+  let pricesAsOf = "";
   // The shared editing password, remembered on this phone. The database checks it on every change.
   let editPassword = load(LS.password, "");
   let canEdit = !!editPassword;
@@ -69,8 +77,11 @@
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const toRow = (i) => ({ id: i.id, name: i.name, category: i.category, checked: i.checked, created_at: i.created_at });
-  const WRONG_PASSWORD = "28P01"; // raised by save_item/delete_item in supabase/password.sql
+  const toRow = (i) => ({
+    id: i.id, name: i.name, category: i.category, checked: i.checked,
+    quantity: i.quantity ?? 1, created_at: i.created_at,
+  });
+  const WRONG_PASSWORD = "28P01"; // raised by save_item/delete_item in supabase/functions.sql
 
   // Network failures, auth problems, a missing table, or server errors are worth retrying later;
   // anything else means Supabase rejected this specific change, so drop it rather than block the queue.
@@ -100,6 +111,7 @@
           : await db.rpc("save_item", {
             pw: editPassword, item_id: op.item.id, item_name: op.item.name, item_category: op.item.category,
             item_checked: op.item.checked, item_created_at: op.item.created_at,
+            item_quantity: op.item.quantity ?? 1,
           });
         if (res.error?.code === WRONG_PASSWORD) { setPassword(""); break; } // password was changed
         if (res.error) {
@@ -123,7 +135,7 @@
     updateStatus();
     try {
       const { data, error } = await db.from(TABLE)
-        .select("id,name,category,checked,created_at")
+        .select("id,name,category,checked,quantity,created_at")
         .order("created_at");
       if (error) { syncError = error; return; }
       const next = new Map(data.map((r) => [r.id, r]));
@@ -205,7 +217,7 @@
       flash(existing.id);
       return;
     }
-    const item = { id: uuid(), name, category: category || "Other", checked: false, created_at: new Date().toISOString() };
+    const item = { id: uuid(), name, category: category || "Other", checked: false, quantity: 1, created_at: new Date().toISOString() };
     queue({ kind: "upsert", item });
     flash(item.id);
   }
@@ -214,6 +226,13 @@
     if (!canEdit) return;
     const item = items.get(id);
     if (item) queue({ kind: "upsert", item: { ...item, checked: !item.checked } });
+  }
+
+  function setQuantity(id, qty) {
+    if (!canEdit) return;
+    const item = items.get(id);
+    qty = Math.min(Math.max(qty, 1), MAX_QTY);
+    if (item && qty !== (item.quantity ?? 1)) queue({ kind: "upsert", item: { ...item, quantity: qty } });
   }
 
   function remove(id) {
@@ -245,7 +264,30 @@
     return i >= 0 ? i : c === "Other" ? 1000 : 999;
   };
 
+  const productFor = (name) => productByName.get(name.toLowerCase());
+
+  function thumb(product) {
+    const wrap = document.createElement("span");
+    wrap.className = "thumb empty";
+    if (product?.i) {
+      wrap.className = "thumb";
+      const img = document.createElement("img");
+      img.alt = "";
+      img.crossOrigin = "anonymous"; // CORS request so the service worker can cache it
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.addEventListener("error", () => { img.remove(); wrap.classList.add("empty"); });
+      img.src = thumbUrl(product.i);
+      wrap.append(img);
+    }
+    return wrap;
+  }
+
+  const metaText = (product) => [product?.p ? money.format(product.p) : "", product?.s ?? ""].filter(Boolean).join(" · ");
+
   function itemRow(item) {
+    const qty = item.quantity ?? 1;
+    const product = productFor(item.name);
     const li = document.createElement("li");
     li.className = "item" + (item.checked ? " checked" : "");
     li.dataset.id = item.id;
@@ -256,19 +298,70 @@
     toggleBtn.setAttribute("aria-pressed", String(item.checked));
     const box = document.createElement("span");
     box.className = "box";
+    const text = document.createElement("span");
+    text.className = "text";
     const name = document.createElement("span");
     name.className = "name";
     name.textContent = item.name;
-    toggleBtn.append(box, name);
+    text.append(name);
+    const meta = metaText(product);
+    if (meta) {
+      const m = document.createElement("span");
+      m.className = "meta";
+      m.textContent = meta;
+      text.append(m);
+    }
+    toggleBtn.append(box, thumb(product), text);
+    li.append(toggleBtn);
 
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className = "remove";
-    removeBtn.setAttribute("aria-label", `Remove ${item.name}`);
-    removeBtn.textContent = "×";
-
-    li.append(toggleBtn, removeBtn);
+    if (canEdit) {
+      // Stepper: at 1, the minus button becomes delete.
+      const stepper = document.createElement("span");
+      stepper.className = "qty";
+      const dec = document.createElement("button");
+      dec.type = "button";
+      dec.className = "dec" + (qty === 1 ? " trash" : "");
+      dec.setAttribute("aria-label", qty === 1 ? `Remove ${item.name}` : `Fewer ${item.name}`);
+      dec.textContent = qty === 1 ? "" : "−";
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = String(qty);
+      count.setAttribute("aria-label", `Quantity ${qty}`);
+      const inc = document.createElement("button");
+      inc.type = "button";
+      inc.className = "inc";
+      inc.setAttribute("aria-label", `More ${item.name}`);
+      inc.textContent = "+";
+      inc.disabled = qty >= MAX_QTY;
+      stepper.append(dec, count, inc);
+      li.append(stepper);
+    } else if (qty > 1) {
+      const badge = document.createElement("span");
+      badge.className = "qty-badge";
+      badge.textContent = `×${qty}`;
+      li.append(badge);
+    }
     return li;
+  }
+
+  function renderTotals(all) {
+    let total = 0, inCart = 0, count = 0, unpriced = 0;
+    for (const i of all) {
+      const qty = i.quantity ?? 1;
+      const price = productFor(i.name)?.p;
+      count += qty;
+      if (!price) { unpriced++; continue; }
+      total += price * qty;
+      if (i.checked) inCart += price * qty;
+    }
+    els.totals.hidden = !all.length;
+    if (!all.length) return;
+    els.total.textContent = money.format(total);
+    els.totalDetail.textContent = `${count} item${count === 1 ? "" : "s"}` + (inCart ? ` · ${money.format(inCart)} in cart` : "");
+    const notes = [];
+    if (unpriced) notes.push(`${unpriced} without a price`);
+    if (pricesAsOf) notes.push(`prices as of ${pricesAsOf}, may vary by store`);
+    els.totalNote.textContent = notes.join(" · ");
   }
 
   function render() {
@@ -311,6 +404,7 @@
     els.done.hidden = !done.length;
     els.doneCount.textContent = done.length ? `(${done.length})` : "";
     els.doneItems.replaceChildren(...done.map(itemRow));
+    renderTotals(all);
   }
 
   // ---------- Search ----------
@@ -318,7 +412,7 @@
     .replace(/['’"]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
   const entry = (p, isCustom = false) => {
     const key = norm(p.n);
-    return { n: p.n, c: p.c, key, words: key.split(" "), custom: isCustom };
+    return { n: p.n, c: p.c, p: p.p, s: p.s, i: p.i, key, words: key.split(" "), custom: isCustom };
   };
 
   function rebuildPool() {
@@ -355,7 +449,7 @@
     const q = els.q.value.trim();
     if (!q) return hideSuggestions();
     const results = search(q);
-    options = results.map((p) => ({ n: p.n, c: p.c }));
+    options = results.map((p) => ({ n: p.n, c: p.c, product: p.custom ? null : p }));
     if (!results.some((p) => p.key === norm(q))) options.push({ n: q, c: "Other", addCustom: true });
     active = 0;
 
@@ -367,13 +461,19 @@
       const onList = !o.addCustom && findByName(o.n);
       if (o.addCustom) li.className = "s-custom";
       else if (onList && !onList.checked) li.className = "s-on-list";
+      const text = document.createElement("span");
+      text.className = "s-text";
       const name = document.createElement("span");
       name.className = "s-name";
       name.textContent = o.addCustom ? `Add “${o.n}”` : o.n;
       const cat = document.createElement("span");
       cat.className = "s-cat";
-      cat.textContent = o.addCustom ? "Custom item" : onList && !onList.checked ? `${o.c} · on your list` : o.c;
-      li.append(name, cat);
+      const meta = metaText(o.product);
+      cat.textContent = o.addCustom ? "Custom item"
+        : [o.c, meta, onList && !onList.checked ? "on your list" : ""].filter(Boolean).join(" · ");
+      text.append(name, cat);
+      if (o.addCustom) li.append(text);
+      else li.append(thumb(o.product), text);
       return li;
     }));
     els.sugg.hidden = false;
@@ -503,8 +603,10 @@
   document.addEventListener("click", (e) => {
     const row = e.target.closest(".item");
     if (!row) return;
-    if (e.target.closest(".remove")) remove(row.dataset.id);
-    else if (e.target.closest(".toggle")) toggle(row.dataset.id);
+    const id = row.dataset.id, qty = items.get(id)?.quantity ?? 1;
+    if (e.target.closest(".dec")) { if (qty <= 1) remove(id); else setQuantity(id, qty - 1); }
+    else if (e.target.closest(".inc")) setQuantity(id, qty + 1);
+    else if (e.target.closest(".toggle")) toggle(id);
   });
 
   els.clear.addEventListener("click", clearChecked);
@@ -526,7 +628,14 @@
   fetch("data/catalog.json")
     .then((r) => r.json())
     .then((data) => {
-      catalog = data.map((p) => entry(p));
+      const products = Array.isArray(data) ? data : data.products; // v1 catalogs were a bare array
+      catalog = products.map((p) => entry(p));
+      productByName = new Map(products.map((p) => [p.n.toLowerCase(), p]));
+      if (data.asOf) {
+        const [y, m, d] = data.asOf.split("-").map(Number);
+        pricesAsOf = new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      }
+      render();
       rebuildPool();
       if (document.activeElement === els.q) showSuggestions();
     })

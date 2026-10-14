@@ -1,5 +1,5 @@
 // Offline support. Bump VERSION whenever you deploy changes so phones pick them up.
-const VERSION = "v6";
+const VERSION = "v7";
 const CACHE = `tj-list-${VERSION}`;
 const ASSETS = [
   "./",
@@ -16,6 +16,11 @@ const ASSETS = [
 ];
 const NETWORK_TIMEOUT_MS = 3000;
 
+// Product thumbnails from Trader Joe's (~25 KB each). Kept across app versions, capped in size.
+const IMG_CACHE = "tj-img-v1";
+const IMG_PREFIX = "https://www.traderjoes.com/content/dam/trjo/products/";
+const IMG_MAX_ENTRIES = 600;
+
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
@@ -29,12 +34,38 @@ self.addEventListener("activate", (event) => {
 });
 
 // Same-origin files: try the network (so updates show up), but fall back to the cache
-// quickly when the store's signal is bad. Supabase requests are left alone.
+// quickly when the store's signal is bad. Product photos: cache first (they rarely change).
+// Supabase requests are left alone.
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
-  event.respondWith(networkFirst(req));
+  if (req.method !== "GET") return;
+  if (req.url.startsWith(IMG_PREFIX)) event.respondWith(imageCacheFirst(req));
+  else if (new URL(req.url).origin === self.location.origin) event.respondWith(networkFirst(req));
 });
+
+async function imageCacheFirst(req) {
+  const cache = await caches.open(IMG_CACHE);
+  const hit = await cache.match(req.url);
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (res.ok && res.type === "cors") {
+    await cache.put(req.url, res.clone());
+    trimImages(cache);
+  }
+  return res;
+}
+
+let trimming = false;
+async function trimImages(cache) {
+  if (trimming) return;
+  trimming = true;
+  try {
+    const keys = await cache.keys(); // oldest first
+    for (const k of keys.slice(0, Math.max(0, keys.length - IMG_MAX_ENTRIES))) await cache.delete(k);
+  } finally {
+    trimming = false;
+  }
+}
 
 async function networkFirst(req) {
   const cache = await caches.open(CACHE);

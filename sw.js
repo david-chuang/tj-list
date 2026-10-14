@@ -1,5 +1,5 @@
 // Offline support. Bump VERSION whenever you deploy changes so phones pick them up.
-const VERSION = "v5";
+const VERSION = "v6";
 const CACHE = `tj-list-${VERSION}`;
 const ASSETS = [
   "./",
